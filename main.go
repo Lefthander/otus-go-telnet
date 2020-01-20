@@ -1,72 +1,30 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"fmt"
+	"flag"
 	"log"
 	"net"
 	"os"
-	"sync"
-	"time"
 )
 
-func readSocket(ctx context.Context, cancel context.CancelFunc, conn net.Conn) {
-	scanner := bufio.NewScanner(conn)
-
-	for {
-		select {
-		case <-ctx.Done():
-			break
-		default:
-			if !scanner.Scan() {
-				log.Printf("Cannot read")
-				cancel()
-				break
-			}
-			text := scanner.Text()
-			log.Printf("From server %s", text)
-		}
-	}
-	log.Println("Finished readSocket")
-}
-
-func writeSocket(ctx context.Context, conn net.Conn) {
-	scanner := bufio.NewScanner(os.Stdin)
-	for {
-		select {
-		case <-ctx.Done():
-			break
-		default:
-			if !scanner.Scan() {
-				break
-			}
-			s := scanner.Text()
-			log.Println("To server", s)
-			conn.Write([]byte(fmt.Sprintf("%s\n", s)))
-		}
-	}
-	log.Println("Finished writeSocket")
-}
 func main() {
 
-	validateArgs()
-	dialer := &net.Dialer{}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(Timeout)*time.Second)
-	conn, err := dialer.DialContext(ctx, "tcp", Host+":"+Port)
-	if err != nil {
-		log.Fatal("Failed to connect", err)
+	// Check the consistency of input parameters ( host & port must be present)
+	if err := validateArgs(os.Args); err != nil {
+		flag.Usage()
+		log.Fatal(err)
 	}
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		readSocket(ctx, cancel, conn)
-		wg.Done()
-	}()
-	wg.Add(1)
-	go func() {
-		writeSocket(ctx, conn)
-	}()
-	wg.Wait()
-	conn.Close()
+
+	// Parse the optional parameter Timeout in order to get the appropriate duration
+
+	ctx := context.Background()
+
+	client := NewClient(ctx, net.JoinHostPort(Host, Port), "tcp", duration, os.Stdin, os.Stdout)
+
+	client.TerminateHandler()
+
+	if err := client.Connect(); err != nil {
+		log.Println("Error occured during the connect ", err)
+	}
 }
