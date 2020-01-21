@@ -10,13 +10,11 @@ import (
 
 func main() {
 
-	// Check the consistency of input parameters ( host & port must be present)
-	if err := validateArgs(os.Args); err != nil {
+	// Check the consistency of input parameters ( host & port must be present, timeout must be in correct format, port must be a number)
+	if err := validateArgs(nil); err != nil {
 		flag.Usage()
 		log.Fatal(err)
 	}
-
-	// Parse the optional parameter Timeout in order to get the appropriate duration
 
 	ctx := context.Background()
 
@@ -25,6 +23,7 @@ func main() {
 	client.TerminateHandler()
 
 	if err := client.Connect(); err != nil {
-		log.Println("Error occured during the connect ", err)
+		log.Println("Connection closed with ", err)
+		os.Exit(2)
 	}
 }

@@ -11,15 +11,15 @@ func TestValidate(t *testing.T) {
 		err error
 	}{
 		{
-			arg: []string{"--timeout=10s", "localhost", "8081"},
+			arg: []string{"--timeout=30s", "localhost", "8081"},
 			err: nil,
 		},
 		{
-			arg: []string{"--timeout=10s", "localhost", "abc123"},
+			arg: []string{"--timeout=20s", "localhost", "abc123"},
 			err: ErrPortMustBeANumber,
 		},
 		{
-			arg: []string{"--timeout=10s"},
+			arg: []string{"--timeout=15s"},
 			err: ErrHostnPortMustBeDefined,
 		},
 		{
@@ -31,7 +31,7 @@ func TestValidate(t *testing.T) {
 			err: ErrHostnPortMustBeDefined,
 		},
 		{
-			arg: []string{"--timeout=10s", "123"},
+			arg: []string{"--timeout=15s", "123"},
 			err: ErrHostnPortMustBeDefined,
 		},
 		{

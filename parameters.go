@@ -31,6 +31,7 @@ var (
 func init() {
 
 	flag.StringVar(&Timeout, "timeout", "10s", "Timeout to connect the destination host")
+	// flag.DurationVar(&duration, "timeout", time.Duration(10)*time.Second, "Timeout to connect the remote end")
 
 }
 
@@ -41,12 +42,24 @@ func validateArgs(args []string) error {
 		log.Println("Usage:", filename, "[--timeout=<value>] host port")
 	}
 
-	a := os.Args
+	a := os.Args[1:]
 	if args != nil {
 		a = args
 	}
 
-	flag.CommandLine.Parse(a)
+	err := flag.CommandLine.Parse(a)
+
+	if err != nil {
+		return ErrInvalidTimeFormat
+	}
+
+	//	log.Printf("Number of flags=%v", flag.NFlag())
+
+	//	log.Println("Host=", Host)
+	//	log.Println("Port=", Port)
+	//	log.Println("Timeout=", duration)
+
+	//	log.Println("Number of parameters is", flag.NArg())
 
 	if flag.NArg() == 0 || flag.NArg() < 2 {
 		return ErrHostnPortMustBeDefined
@@ -58,8 +71,6 @@ func validateArgs(args []string) error {
 		return ErrPortMustBeANumber
 	}
 	Port = flag.Arg(1)
-
-	var err error
 
 	duration, err = time.ParseDuration(Timeout)
 	if err != nil {
