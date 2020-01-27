@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 	"net"
@@ -16,14 +15,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ctx := context.Background()
+	client := NewClient(net.JoinHostPort(Host, Port), "tcp", duration, os.Stdin, os.Stdout)
 
-	client := NewClient(ctx, net.JoinHostPort(Host, Port), "tcp", duration, os.Stdin, os.Stdout)
-
-	client.TerminateHandler()
-
-	if err := client.Connect(); err != nil {
+	if err := client.connect(); err != nil {
 		log.Println("Connection closed with ", err)
-		os.Exit(2)
 	}
 }

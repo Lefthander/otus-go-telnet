@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,37 +9,28 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 )
 
 // TelnetClient is a struct to store the information related to telnet client instance
 type TelnetClient struct {
-	ctxTimeOut        context.Context
-	ctxCancel         context.Context
-	proto             string        // "tcp" or "udp" TCP is used by default.
-	destination       string        // host:port string
-	timeout           time.Duration // related to command line timeout parameter
-	connection        net.Conn
-	cancelFuncTimeOut context.CancelFunc // Cancel Function for Context with Timeout
-	cancelFunc        context.CancelFunc // Cancel Function for Context with Cancel
-	in                io.Reader          // Reading from remote end
-	out               io.Writer          // Writing to remote end
+	proto       string        // "tcp" or "udp" TCP is used by default.
+	destination string        // host:port string
+	timeout     time.Duration // related to command line timeout parameter
+	connection  net.Conn      // Connection to remote end
+	in          io.Reader     // Reading from remote end
+	out         io.Writer     // Writing to remote end
 }
 
 var (
-	// ErrAbortByContext is an error to catch the case the the cancel() shooted.
-	ErrAbortByContext error = errors.New("Aborted by context")
-	//ErrAbortBySystem  error = errors.New("Aborted by system interrupt")
+
+	// ErrAbortedBySystemInterrupt is a error to indicate the program termination by Ctrl-C
+	ErrAbortedBySystemInterrupt error = errors.New("Aborted by system interrupt")
 )
 
-// NewClient creates a new instance of telnet client
-func NewClient(ctx context.Context, dest string, protocol string, timeout time.Duration, in io.Reader, out io.Writer) *TelnetClient {
-
-	if protocol == "" {
-		protocol = "tcp"
-	}
+// NewClient creates a new instance of TelnetClient
+func NewClient(dest string, protocol string, timeout time.Duration, in io.Reader, out io.Writer) *TelnetClient {
 
 	tc := &TelnetClient{
 		proto:       protocol,
@@ -50,111 +40,73 @@ func NewClient(ctx context.Context, dest string, protocol string, timeout time.D
 		out:         out,
 	}
 
-	tc.ctxTimeOut, tc.cancelFuncTimeOut = context.WithTimeout(ctx, tc.timeout)
-	tc.ctxCancel, tc.cancelFunc = context.WithCancel(ctx)
-
 	return tc
 }
 
-// Connect make a connection to the remote end
-func (t *TelnetClient) Connect() error {
+func (t *TelnetClient) connect() error {
 
-	var err, ErrOut, ErrIn error
+	var err error
 
-	dialer := &net.Dialer{}
-
-	t.connection, err = dialer.DialContext(t.ctxTimeOut, t.proto, t.destination)
+	t.connection, err = net.DialTimeout(t.proto, t.destination, t.timeout)
 
 	if err != nil {
 		return err
 	}
-	defer t.CloseSession()
-	defer t.cancelFuncTimeOut()
-	defer t.cancelFunc()
+
+	// Don't forget to close the connection at the end.
+	defer t.connection.Close()
 
 	log.Printf("Connected to host: %s with timeout=%v", t.destination, t.timeout)
 	log.Println("Press Ctrl-D / Ctrl-C to exit")
 
-	wg := sync.WaitGroup{}
+	ErrorChannel := make(chan error)
+	InputChannel := make(chan string)
+	OutputChannel := make(chan string)
 
-	wg.Add(2)
-
+	// Run the support goroutine to handle system interrupt with Ctrl-C
 	go func() {
-		// Read from t.connection (remote end) and write to t.out(os.Stdout)
-		ErrOut = t.readerWriter(t.connection, t.out)
-		wg.Done()
+		sysInterrupt := make(chan os.Signal, 1)
+		signal.Notify(sysInterrupt, syscall.SIGTERM, syscall.SIGINT, os.Interrupt)
+		<-sysInterrupt
+		log.Printf("Received system interrupt -%v, aborting...", sysInterrupt)
+		ErrorChannel <- ErrAbortedBySystemInterrupt
 	}()
 
-	go func() {
-		// Read from t.in (os.Stdin) and write to t.connection(remote end)
-		ErrIn = t.readerWriter(t.in, t.connection)
-		wg.Done()
-	}()
+	// Run reader for remote connection
+	go readFromIO(t.connection, InputChannel, OutputChannel, ErrorChannel, true)
 
-	wg.Wait()
+	// Run reader for stdin
+	go readFromIO(t.in, InputChannel, OutputChannel, ErrorChannel, false)
 
-	if ErrIn != nil && ErrOut != nil {
-		if ErrIn == ErrOut {
-			return fmt.Errorf(">%v", ErrIn)
-		}
-		return fmt.Errorf("In: %v, Out: %v", ErrIn, ErrOut)
-	} else if ErrIn != nil {
-		return ErrIn
-	} else if ErrOut != nil {
-		return ErrOut
-	}
-
-	return nil
-}
-
-func rw(ctx context.Context, cancel context.CancelFunc, in io.Reader, out io.Writer) error {
-	var err error
-	rw := bufio.NewScanner(in)
-loop:
+	// Supervisor loop, stops in case of any error from the ErrorChannel.
 	for {
 		select {
-		case <-ctx.Done():
-			err = ErrAbortByContext
-			break loop
-		default:
-			if ok := rw.Scan(); ok {
-				out.Write([]byte(rw.Text() + "\n"))
-			} else {
-				log.Println("<<<EOF>>> detected, aborting...Press Enter to close session")
-				err = io.EOF
-				cancel()
-				break loop
-			}
+		case in := <-InputChannel:
+			fmt.Print(in)
+		case out := <-OutputChannel:
+			t.connection.Write([]byte(out))
+		case err := <-ErrorChannel:
+			return err
 		}
 	}
-	return err
-}
-
-// Wrapper method for rw function
-func (t *TelnetClient) readerWriter(in io.Reader, out io.Writer) error {
-
-	return rw(t.ctxCancel, t.cancelFunc, in, out)
 
 }
 
-// CloseSession does a close of current session
-func (t *TelnetClient) CloseSession() error {
-
-	log.Println("Closing the session...")
-	err := t.connection.Close()
-	if nil != err {
-		return err
+// readFromIO reads from the io.Reader and forward the receiced data in accordance to the direction flag
+// direction = true  in(io.Reader) -> input (InputChannel)
+// direction = false in(io.Reader) -> output (OutputChannel)
+// In case of EOF or any other error - forward receiced error from io.Reader to the errchan (ErrorChannel)
+func readFromIO(in io.Reader, input, output chan string, errchan chan error, direction bool) {
+	r := bufio.NewReader(in)
+	for {
+		str, err := r.ReadString('\n')
+		if err != nil {
+			errchan <- err
+		}
+		if direction {
+			input <- str
+		} else {
+			output <- str
+		}
 	}
-	return nil
-}
-
-// TerminateHandler catch an OS interrupts signals
-func (t *TelnetClient) TerminateHandler() {
-	go func() {
-		terminate := make(chan os.Signal, 1)
-		signal.Notify(terminate, syscall.SIGTERM, syscall.SIGINT, os.Interrupt)
-		<-terminate
-		log.Printf("Received Signal:%v aborting... Press Enter to close.", terminate)
-		t.cancelFunc()
-	}()
 }

@@ -25,14 +25,12 @@ var (
 	// ErrPortMustBeANumber is error to catch the case when received port value is not a number
 	ErrPortMustBeANumber error = errors.New("Port must be a number")
 	// ErrInvalidTimeFormat is a error to catch the case when  invalid time fomrat is used for timeout parameter
-	ErrInvalidTimeFormat error = errors.New("Invalid Time format")
+	ErrInvalidTimeFormat error = errors.New("Invalid Time format. Time unit must be specified i.e. s,m,h etc")
 )
 
 func init() {
 
 	flag.StringVar(&Timeout, "timeout", "10s", "Timeout to connect the destination host")
-	// flag.DurationVar(&duration, "timeout", time.Duration(10)*time.Second, "Timeout to connect the remote end")
-
 }
 
 func validateArgs(args []string) error {
@@ -52,14 +50,6 @@ func validateArgs(args []string) error {
 	if err != nil {
 		return ErrInvalidTimeFormat
 	}
-
-	//	log.Printf("Number of flags=%v", flag.NFlag())
-
-	//	log.Println("Host=", Host)
-	//	log.Println("Port=", Port)
-	//	log.Println("Timeout=", duration)
-
-	//	log.Println("Number of parameters is", flag.NArg())
 
 	if flag.NArg() == 0 || flag.NArg() < 2 {
 		return ErrHostnPortMustBeDefined
