@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/lefthander/otus-go-telnet)](https://goreportcard.com/report/github.com/lefthander/otus-go-telnet)
+
 ## Lesson - 20
 ### Low level protocols TCP,UDP, DNS
 
