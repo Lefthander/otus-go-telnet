@@ -1,4 +1,4 @@
-module github.com/lefthander/otus-go-telnet
+module github.com/Lefthander/otus-go-telnet
 
 go 1.13
 
