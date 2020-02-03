@@ -15,7 +15,6 @@ import (
 
 // TelnetClient is a struct to store the information related to telnet client instance
 type TelnetClient struct {
-	proto       string        // "tcp" or "udp" TCP is used by default.
 	destination string        // host:port string
 	timeout     time.Duration // related to command line timeout parameter
 	connection  net.Conn      // Connection to remote end
@@ -30,10 +29,9 @@ var (
 )
 
 // NewClient creates a new instance of TelnetClient
-func NewClient(dest string, protocol string, timeout time.Duration, in io.Reader, out io.Writer) *TelnetClient {
+func NewClient(dest string, timeout time.Duration, in io.Reader, out io.Writer) *TelnetClient {
 
 	tc := &TelnetClient{
-		proto:       protocol,
 		destination: dest,
 		timeout:     timeout,
 		in:          in,
@@ -46,13 +44,11 @@ func NewClient(dest string, protocol string, timeout time.Duration, in io.Reader
 func (t *TelnetClient) connect() error {
 
 	var err error
-
-	t.connection, err = net.DialTimeout(t.proto, t.destination, t.timeout)
-
+	
+	t.connection, err = net.DialTimeout("tcp", t.destination, t.timeout)
 	if err != nil {
 		return err
 	}
-
 	// Don't forget to close the connection at the end.
 	defer t.connection.Close()
 
